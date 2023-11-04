@@ -1,0 +1,60 @@
+#!/bin/bash
+# Create Arch Linux live USB drive.
+# Author: Denis Dukhnenko
+
+# Check if the first argument is present.
+[ -z ${1} ] && cat << EOF && exit 1
+Usage: mkarchusb <disk>
+Create Arch Linux live USB drive.
+EOF
+drive=${1}
+
+# Check if a block device exists...
+[ ! -b ${drive} ] && cat << EOF && exit 1
+${drive} is not a disk.
+EOF
+
+# ...and is not a partition.
+[[ $(lsblk -ndo TYPE ${drive}) != 'disk' ]] && cat << EOF && exit 1
+${drive} must be a disk, not a partition.
+EOF
+
+# Check if user is root.
+[ ${EUID} -ne 0 ] && cat << EOF && exit 1
+mkarchusb must be run as root.
+EOF
+
+# Final warning.
+read -p "Entire disk at ${drive} will be erased. Are you sure? [y/N] " answer
+[[ ${answer,,} != @(y|yes) ]] && exit 1
+echo
+
+# Attempt to unmount the disk. If there are no partitions, findmnt recieves
+# literal string in $partition (like '/dev/sda?*') and fails as expected.
+echo "Unmounting..."
+for partition in ${drive}?*; do
+	if findmnt ${partition} > /dev/null; then
+		if ! umount ${partition}; then
+			cat <<- EOF && exit 1
+			Cannot unmount partition ${partition} on target disk.
+			EOF
+		fi
+	fi
+done
+
+# Create and enter temporary directory.
+tempdir=$(mktemp -d)
+cd ${tempdir} || exit 1
+
+# Make sure to clean after no matter what, temp files are heavy and numerous.
+trap 'rm -rf ${tempdir}' INT EXIT
+
+# Install archiso package if not yet.
+pacman -S --needed --noconfirm archiso > /dev/null && \
+
+# Start the main procedure.
+echo "Downloading and building Arch Linux ISO (it could take a long time)..." && \
+mkarchiso /usr/share/archiso/configs/releng/ && \
+echo "Writing ISO to USB drive..." && \
+cp out/* ${drive} && \
+echo "Ready."
