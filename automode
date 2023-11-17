@@ -1,0 +1,103 @@
+#!/bin/bash
+# Auto light/dark mode switcher or GNOME 45+ (systemd based).
+# Requires:
+# - installed jq (JSON parser) package
+# - enabled geolocation in Settings > Privacy > Location Services
+# - internet connection to update sunrise/sunset times through the year
+# Author: Denis Dukhnenko
+
+# Try and launch jq.
+if ! jq --version &> /dev/null; then
+	cat <<- EOF
+	Automode requires 'jq' package.
+	Install it and try again.
+	EOF
+	exit 1
+fi
+
+# Get previously saved coordinates from internal GNOME geolocation service.
+# Apparently it's never empty and is always formatted, though may be outdated.
+# No reliable way to check it.
+coordinates=$(gsettings get org.gnome.settings-daemon.plugins.color night-light-last-coordinates)
+
+longitude=${coordinates#* }; longitude=${longitude%)}
+latitude=${coordinates%,*}; latitude=${latitude#(}
+
+# Use web API to get JSON response with sunrise and sunset times.
+# If curl fails, response should be empty, and the message is shown
+# during interactive installation. If curl fails during normal work
+# then we still have old sunrise/sunset data, not worth a warning.
+response=$(curl -fs "https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&formatted=0")
+if [ -z ${response} ]; then
+	cat <<- EOF
+	Problems with retrieving sunrise/sunset information.
+	Make sure you are connected to internet and try again.
+	EOF
+	exit 1
+fi
+
+# Parse JSON, extract and format time strings.
+sunrise=$(echo ${response} | jq '.results.sunrise'); sunrise=${sunrise//\"/}
+sunrise=$(date -d "${sunrise}" +%H:%M:%S)
+sunset=$(echo ${response} | jq '.results.sunset'); sunset=${sunset//\"/}
+sunset=$(date -d "${sunset}" +%H:%M:%S)
+
+# Print systemd timer file for light mode.
+cat << EOF > ~/.config/systemd/user/autolight.timer
+[Unit]
+Description=Daily sunrise
+
+[Timer]
+OnCalendar=*-*-* ${sunrise}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Print systemd service file for light mode.
+cat << EOF > ~/.config/systemd/user/autolight.service
+[Unit]
+Description=Switch GNOME to light mode
+
+[Service]
+Type=oneshot
+ExecStart=gsettings set org.gnome.desktop.interface color-scheme prefer-light
+ExecStart=/bin/bash %h/.local/bin/automode
+EOF
+
+# Print systemd timer file for dark mode.
+cat << EOF > ~/.config/systemd/user/autodark.timer
+[Unit]
+Description=Daily sunset
+
+[Timer]
+OnCalendar=*-*-* ${sunset}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+# Print systemd service file for dark mode.
+cat << EOF > ~/.config/systemd/user/autodark.service
+[Unit]
+Description=Switch GNOME to dark mode
+
+[Service]
+Type=oneshot
+ExecStart=gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+ExecStart=/bin/bash %h/.local/bin/automode
+EOF
+
+# Reload all units, enable and start timers.
+systemctl --user daemon-reload
+systemctl --user enable --now autolight.timer autodark.timer
+
+# If this script is not executed from ~/.local/bin (as it would via the service),
+# then install it to that directory. Don't bother to make the script executable
+# as we don't need the user to run it manually.
+if [ ! ${0} -ef ~/.local/bin/automode ]; then
+	mkdir -p ~/.local/bin
+	cp ${0} ~/.local/bin/automode
+fi
