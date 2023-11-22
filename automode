@@ -42,6 +42,9 @@ sunrise=$(date -d "${sunrise}" +%H:%M:%S)
 sunset=$(echo ${response} | jq '.results.sunset'); sunset=${sunset//\"/}
 sunset=$(date -d "${sunset}" +%H:%M:%S)
 
+# Make directory for user units if it doesn't exist.
+mkdir -p ~/.config/systemd/user
+
 # Print systemd timer file for light mode.
 cat << EOF > ~/.config/systemd/user/autolight.timer
 [Unit]
