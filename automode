@@ -28,7 +28,7 @@ latitude=${coordinates%,*}; latitude=${latitude#(}
 # during interactive installation. If curl fails during normal work
 # then we still have old sunrise/sunset data, not worth a warning.
 response=$(curl -fs "https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&formatted=0")
-if [ -z ${response} ]; then
+if [ -z "${response}" ]; then
 	cat <<- EOF
 	Problems with retrieving sunrise/sunset information.
 	Make sure you are connected to internet and try again.
@@ -37,9 +37,9 @@ if [ -z ${response} ]; then
 fi
 
 # Parse JSON, extract and format time strings.
-sunrise=$(echo ${response} | jq '.results.sunrise'); sunrise=${sunrise//\"/}
+sunrise=$(echo "${response}" | jq '.results.sunrise'); sunrise=${sunrise//\"/}
 sunrise=$(date -d "${sunrise}" +%H:%M:%S)
-sunset=$(echo ${response} | jq '.results.sunset'); sunset=${sunset//\"/}
+sunset=$(echo "${response}" | jq '.results.sunset'); sunset=${sunset//\"/}
 sunset=$(date -d "${sunset}" +%H:%M:%S)
 
 # Make directory for user units if it doesn't exist.
@@ -100,7 +100,7 @@ systemctl --user enable --now autolight.timer autodark.timer
 # If this script is not executed from ~/.local/bin (as it would via the service),
 # then install it to that directory. Don't bother to make the script executable
 # as we don't need the user to run it manually.
-if [ ! ${0} -ef ~/.local/bin/automode ]; then
+if [ ! "${0}" -ef ~/.local/bin/automode ]; then
 	mkdir -p ~/.local/bin
-	cp ${0} ~/.local/bin/automode
+	cp "${0}" ~/.local/bin/automode
 fi
